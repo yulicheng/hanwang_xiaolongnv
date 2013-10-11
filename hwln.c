@@ -2,6 +2,7 @@
 #include <linux/init.h>
 
 #include <linux/usb.h>
+#include <linux/input.h>
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -95,54 +96,48 @@ static void detect_endpoints(struct usb_interface *intf)
     }
 }
 
-static int hwln_probe(struct usb_interface *intf,
-        const struct usb_device_id *id)
+static struct usb_endpoint_descriptor *check_endpoint(
+        struct usb_host_interface *iface_desc)
 {
-    int retval = 0;
-    struct hwln_dev *dev;
-    struct usb_host_interface *iface_desc;
     struct usb_endpoint_descriptor *endpoint;
 
-    printk("hwln_probe\n");
-
-    detect_endpoints(intf);
-
     //check endpoint type to be DIR_IN and TYPE_INT
-    iface_desc = intf->cur_altsetting;
     if (iface_desc->desc.bNumEndpoints < 1) {
-        retval = -1;
-        goto error;
+        return NULL;
     }
     endpoint = &iface_desc->endpoint[0].desc;
     if (!(endpoint->bEndpointAddress & USB_DIR_IN) ||
             (endpoint->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) !=
             USB_ENDPOINT_XFER_INT) {
+        return NULL;
+    }
+
+    return endpoint;
+}
+
+static int setup_usb(struct hwln_dev *dev)
+{
+    int retval = 0;
+    struct usb_endpoint_descriptor *endpoint;
+
+    endpoint = check_endpoint(dev->intf->cur_altsetting);
+    if (!endpoint) {
+        pr_err("error endpoint");
         retval = -1;
         goto error;
     }
-
-    //malloc struct dev
-    dev = kzalloc(sizeof (struct hwln_dev), GFP_KERNEL);
-    if (dev == NULL) {
-        pr_err("alloc for dev failed");
-        retval = -ENOMEM;
-        goto error;
-    }
-
-    dev->udev = usb_get_dev(interface_to_usbdev(intf));
-    dev->intf = intf;
     dev->buf_size = endpoint->wMaxPacketSize;
 
-    //malloc dma buffer for int input
+    //alloc dma buffer for int input
     dev->buf = usb_alloc_coherent(dev->udev, dev->buf_size, GFP_KERNEL,
             &dev->buf_dma);
     if (!dev->buf) {
         pr_err("alloc for buf failed");
         retval = -ENOMEM;
-        goto err_dev;
+        goto error;
     }
 
-    //malloc urb
+    //alloc urb
     dev->irq = usb_alloc_urb(0, GFP_KERNEL);
     if (!dev->irq) {
         pr_err("alloc for urb failed");
@@ -155,7 +150,7 @@ static int hwln_probe(struct usb_interface *intf,
     dev->irq->transfer_dma = dev->buf_dma;
     dev->irq->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
 
-    usb_set_intfdata(intf, dev);
+    usb_set_intfdata(dev->intf, dev);
 
     //enable urb
     retval = usb_submit_urb(dev->irq, GFP_KERNEL);
@@ -167,10 +162,65 @@ static int hwln_probe(struct usb_interface *intf,
     return 0;
 
 err_intfdata:
-    usb_set_intfdata(intf, NULL);
+    usb_set_intfdata(dev->intf, NULL);
+    usb_free_urb(dev->irq);
 err_devbuf:
     usb_free_coherent(dev->udev, dev->buf_size, dev->buf, dev->buf_dma);
-err_dev:
+error:
+    return retval;
+}
+
+static int setup_input(struct hwln_dev *dev)
+{
+    int retval = 0;
+
+    /*dev->idev = input_allocate_device();
+    if (!dev->idev) {
+        retval = -ENOMEM;
+        goto error;
+    }
+
+error:*/
+    return retval;
+}
+
+static int hwln_probe(struct usb_interface *intf,
+        const struct usb_device_id *id)
+{
+    int retval = 0;
+    struct hwln_dev *dev;
+
+    printk("hwln_probe\n");
+    detect_endpoints(intf);
+
+    //alloc struct dev
+    dev = kzalloc(sizeof (struct hwln_dev), GFP_KERNEL);
+    if (dev == NULL) {
+        pr_err("alloc for dev failed");
+        retval = -ENOMEM;
+        goto error;
+    }
+    dev->udev = usb_get_dev(interface_to_usbdev(intf));
+    dev->intf = intf;
+
+    retval = setup_usb(dev);
+    if (retval) {
+        goto err_getdev;
+    }
+
+    retval = setup_input(dev);
+    if (retval) {
+        //teardown usb
+        usb_set_intfdata(intf, NULL);
+        usb_free_urb(dev->irq);
+        usb_free_coherent(dev->udev, dev->buf_size, dev->buf, dev->buf_dma);
+        goto err_getdev;
+    }
+
+    return 0;
+
+err_getdev:
+    usb_put_dev(dev->udev);
     kfree(dev);
 error:
     return retval;
@@ -183,11 +233,17 @@ static void hwln_disconnect(struct usb_interface *intf)
     printk("hwln_disconnect\n");
 
     dev = usb_get_intfdata(intf);
-    usb_set_intfdata(intf, NULL);
     usb_kill_urb(dev->irq);
+
+    //teardown input
+
+    //teardown usb
+    usb_set_intfdata(intf, NULL);
     usb_free_urb(dev->irq);
-    usb_free_coherent(interface_to_usbdev(intf), dev->buf_size, dev->buf,
-            dev->buf_dma);
+    usb_free_coherent(dev->udev, dev->buf_size, dev->buf, dev->buf_dma);
+
+    //free dev
+    usb_put_dev(dev->udev);
     kfree(dev);
 }
 
