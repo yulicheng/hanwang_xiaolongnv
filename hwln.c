@@ -161,11 +161,13 @@ static int hwln_probe(struct usb_interface *intf,
     retval = usb_submit_urb(dev->irq, GFP_KERNEL);
     if (retval) {
         pr_err("usb_submit_urb failed");
-        goto err_devbuf;
+        goto err_intfdata;
     }
 
     return 0;
 
+err_intfdata:
+    usb_set_intfdata(intf, NULL);
 err_devbuf:
     usb_free_coherent(dev->udev, dev->buf_size, dev->buf, dev->buf_dma);
 err_dev:
