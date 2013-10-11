@@ -32,11 +32,30 @@ struct hwln_dev {
 static void hwln_packet(struct hwln_dev *dev)
 {
     int i;
+    int code;
+
     printk("recv hwln data=");
     for (i = 0; i < dev->buf_size; i++) {
         printk(" %u", dev->buf[i]);
     }
     printk("\n");
+
+    code = (int)dev->buf[0];
+    switch (code) {
+        case 0: //key up
+            input_report_key(dev->idev, KEY_A, 0);
+            input_report_key(dev->idev, KEY_B, 0);
+            break;
+        case 1: //left
+            input_report_key(dev->idev, KEY_A, 1);
+            break;
+        case 2: //right
+            input_report_key(dev->idev, KEY_B, 1);
+            break;
+        default:
+            break;
+    }
+    input_sync(dev->idev);
 }
 
 static void hwln_irq(struct urb *urb)
