@@ -62,15 +62,32 @@ static void hwln_irq(struct urb *urb)
         pr_err("usb_submit_urb failed in irq\n");
 }
 
-static int hwln_open(struct input_dev *dev)
+static int hwln_open(struct input_dev *idev)
 {
+    int retval;
+    struct hwln_dev *dev;
+
     printk("hwln_open\n");
+
+    //enable urb
+    dev = input_get_drvdata(idev);
+    retval = usb_submit_urb(dev->irq, GFP_KERNEL);
+    if (retval) {
+        pr_err("usb_submit_urb failed\n");
+        return -EIO;
+    }
+
     return 0;
 }
 
-static void hwln_close(struct input_dev *dev)
+static void hwln_close(struct input_dev *idev)
 {
+    struct hwln_dev *dev;
+
     printk("hwln_close\n");
+
+    dev = input_get_drvdata(idev);
+    usb_kill_urb(dev->irq);
 }
 
 
@@ -171,18 +188,8 @@ static int setup_usb(struct hwln_dev *dev)
 
     usb_set_intfdata(dev->intf, dev);
 
-    //enable urb
-    retval = usb_submit_urb(dev->irq, GFP_KERNEL);
-    if (retval) {
-        pr_err("usb_submit_urb failed\n");
-        goto err_intfdata;
-    }
-
     return 0;
 
-err_intfdata:
-    usb_set_intfdata(dev->intf, NULL);
-    usb_free_urb(dev->irq);
 err_devbuf:
     usb_free_coherent(dev->udev, dev->buf_size, dev->buf, dev->buf_dma);
 error:
