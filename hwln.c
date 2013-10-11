@@ -39,7 +39,7 @@ struct hwln_dev {
 
 static void hwln_packet(struct hwln_dev *dev)
 {
-    int i;
+    //int i;
     int x;
     int y;
 
@@ -149,7 +149,7 @@ static void detect_endpoints(struct usb_interface *intf)
                 break;
         }
 
-        printk("[%d] %s %s BufSize:%lu Addr:%u Interval:%u\n", i,
+        printk("[%d] %s %s BufSize:%zu Addr:%u Interval:%u\n", i,
                 (in ? "IN" : "OUT"), type_str, buffer_size, addr, interval);
     }
 }
