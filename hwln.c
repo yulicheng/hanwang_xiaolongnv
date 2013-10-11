@@ -44,15 +44,15 @@ static void hwln_irq(struct urb *urb)
         case -ECONNRESET:
         case -ENOENT:
         case -ESHUTDOWN:
-            dev_err(&dev->udev->dev, "urb shutdown");
+            dev_err(&dev->udev->dev, "urb shutdown\n");
             return;
         default:
-            dev_err(&dev->udev->dev, "nonzero urb status: %d", urb->status);
+            dev_err(&dev->udev->dev, "nonzero urb status: %d\n", urb->status);
             break;
     }
     retval = usb_submit_urb(dev->irq, GFP_ATOMIC);
     if (retval)
-        pr_err("usb_submit_urb failed in irq");
+        pr_err("usb_submit_urb failed in irq\n");
 }
 
 //list all endpoints
@@ -122,7 +122,7 @@ static int setup_usb(struct hwln_dev *dev)
 
     endpoint = check_endpoint(dev->intf->cur_altsetting);
     if (!endpoint) {
-        pr_err("error endpoint");
+        pr_err("error endpoint\n");
         retval = -1;
         goto error;
     }
@@ -132,7 +132,7 @@ static int setup_usb(struct hwln_dev *dev)
     dev->buf = usb_alloc_coherent(dev->udev, dev->buf_size, GFP_KERNEL,
             &dev->buf_dma);
     if (!dev->buf) {
-        pr_err("alloc for buf failed");
+        pr_err("alloc for buf failed\n");
         retval = -ENOMEM;
         goto error;
     }
@@ -140,7 +140,7 @@ static int setup_usb(struct hwln_dev *dev)
     //alloc urb
     dev->irq = usb_alloc_urb(0, GFP_KERNEL);
     if (!dev->irq) {
-        pr_err("alloc for urb failed");
+        pr_err("alloc for urb failed\n");
         retval = -ENOMEM;
         goto err_devbuf;
     }
@@ -155,7 +155,7 @@ static int setup_usb(struct hwln_dev *dev)
     //enable urb
     retval = usb_submit_urb(dev->irq, GFP_KERNEL);
     if (retval) {
-        pr_err("usb_submit_urb failed");
+        pr_err("usb_submit_urb failed\n");
         goto err_intfdata;
     }
 
@@ -196,7 +196,7 @@ static int hwln_probe(struct usb_interface *intf,
     //alloc struct dev
     dev = kzalloc(sizeof (struct hwln_dev), GFP_KERNEL);
     if (dev == NULL) {
-        pr_err("alloc for dev failed");
+        pr_err("alloc for dev failed\n");
         retval = -ENOMEM;
         goto error;
     }
@@ -266,7 +266,7 @@ static int __init hwln_init(void)
     printk("hwln_init\n");
     result = usb_register(&hwln_driver);
     if (result)
-        pr_err("hwln register driver failed: %d", result);
+        pr_err("hwln register driver failed: %d\n", result);
     return result;
 }
 
