@@ -3,6 +3,7 @@
 
 #include <linux/usb.h>
 #include <linux/input.h>
+#include <linux/usb/input.h>
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
@@ -14,12 +15,18 @@
 #define PRODUCT_ID 0x4d03
 
 struct hwln_dev {
+    //for usb dev
     struct usb_device *udev;
     struct usb_interface *intf;
     unsigned char *buf;
     dma_addr_t buf_dma;
     size_t buf_size;
     struct urb *irq;
+
+    //for input dev
+    struct input_dev *idev;
+    char name[128];
+    char phys[64];
 };
 
 static void hwln_packet(struct hwln_dev *dev)
@@ -54,6 +61,18 @@ static void hwln_irq(struct urb *urb)
     if (retval)
         pr_err("usb_submit_urb failed in irq\n");
 }
+
+static int hwln_open(struct input_dev *dev)
+{
+    printk("hwln_open\n");
+    return 0;
+}
+
+static void hwln_close(struct input_dev *dev)
+{
+    printk("hwln_close\n");
+}
+
 
 //list all endpoints
 static void detect_endpoints(struct usb_interface *intf)
@@ -170,17 +189,57 @@ error:
     return retval;
 }
 
+//call after setup_usb
 static int setup_input(struct hwln_dev *dev)
 {
     int retval = 0;
+    struct usb_device *udev = dev->udev;
+    struct input_dev *idev;
 
-    /*dev->idev = input_allocate_device();
-    if (!dev->idev) {
+    //alloc input dev
+    idev = input_allocate_device();
+    if (!idev) {
         retval = -ENOMEM;
         goto error;
     }
+    dev->idev = idev;
 
-error:*/
+    //setup name
+    if (udev->manufacturer)
+        strlcpy(dev->name, udev->manufacturer, sizeof (dev->name));
+    if (udev->product) {
+        if (udev->manufacturer)
+            strlcat(dev->name, " ", sizeof (dev->name));
+        strlcat(dev->name, udev->product, sizeof (dev->name));
+    }
+    usb_make_path(udev, dev->phys, sizeof (dev->phys));
+    strlcat(dev->phys, "/input0", sizeof (dev->phys));
+
+    idev->name = dev->name;
+    idev->phys = dev->phys;
+    usb_to_input_id(udev, &idev->id);
+    idev->dev.parent = &dev->intf->dev;
+    input_set_drvdata(idev, dev);
+
+    idev->open = hwln_open;
+    idev->close = hwln_close;
+
+    //idev->evbit[0] = BIT_MASK(EV_KEY);
+    __set_bit(EV_KEY, idev->evbit);
+    __set_bit(KEY_A, idev->keybit);
+    __set_bit(KEY_B, idev->keybit);
+
+    retval = input_register_device(idev);
+    if (retval) {
+        pr_err("register input dev failed\n");
+        goto err_idev;
+    }
+
+    return 0;
+
+err_idev:
+    input_free_device(idev);
+error:
     return retval;
 }
 
@@ -236,6 +295,8 @@ static void hwln_disconnect(struct usb_interface *intf)
     usb_kill_urb(dev->irq);
 
     //teardown input
+    input_unregister_device(dev->idev);
+    input_free_device(dev->idev);
 
     //teardown usb
     usb_set_intfdata(intf, NULL);
