@@ -11,8 +11,16 @@
 //#define VENDOR_ID 0x0951
 //#define PRODUCT_ID 0x1624
 //mouse
-#define VENDOR_ID 0x0461
-#define PRODUCT_ID 0x4d03
+//#define VENDOR_ID 0x0461
+//#define PRODUCT_ID 0x4d03
+//mouse
+#define VENDOR_ID 0x0b57
+#define PRODUCT_ID 0x8021
+
+#define MIN_X 0x0500
+#define MIN_Y 0x0800
+#define MAX_X 0x2400
+#define MAX_Y 0x2400
 
 struct hwln_dev {
     //for usb dev
@@ -32,29 +40,24 @@ struct hwln_dev {
 static void hwln_packet(struct hwln_dev *dev)
 {
     int i;
-    int code;
+    int x;
+    int y;
 
-    printk("recv hwln data=");
+    /*printk("recv hwln data=");
     for (i = 0; i < dev->buf_size; i++) {
-        printk(" %u", dev->buf[i]);
+        printk(" %x", dev->buf[i]);
     }
-    printk("\n");
+    printk("\n");*/
 
-    code = (int)dev->buf[0];
-    switch (code) {
-        case 0: //key up
-            input_report_key(dev->idev, KEY_A, 0);
-            input_report_key(dev->idev, KEY_B, 0);
-            break;
-        case 1: //left
-            input_report_key(dev->idev, KEY_A, 1);
-            break;
-        case 2: //right
-            input_report_key(dev->idev, KEY_B, 1);
-            break;
-        default:
-            break;
-    }
+    x = dev->buf[2] * 256u + dev->buf[1];
+    y = dev->buf[4] * 256u + dev->buf[3];
+
+    input_report_key(dev->idev, BTN_LEFT, dev->buf[0] & 1);
+    input_report_key(dev->idev, BTN_RIGHT, dev->buf[0] & 2);
+
+    input_report_abs(dev->idev, ABS_X, x);
+    input_report_abs(dev->idev, ABS_Y, y);
+
     input_sync(dev->idev);
 }
 
@@ -250,10 +253,13 @@ static int setup_input(struct hwln_dev *dev)
     idev->open = hwln_open;
     idev->close = hwln_close;
 
-    //idev->evbit[0] = BIT_MASK(EV_KEY);
-    __set_bit(EV_KEY, idev->evbit);
-    __set_bit(KEY_A, idev->keybit);
-    __set_bit(KEY_B, idev->keybit);
+    input_set_capability(idev, EV_KEY, BTN_LEFT);
+    input_set_capability(idev, EV_KEY, BTN_RIGHT);
+    input_set_capability(idev, EV_ABS, ABS_X);
+    input_set_capability(idev, EV_ABS, ABS_Y);
+
+    input_set_abs_params(idev, ABS_X, MIN_X, MAX_X, 0, 0);
+    input_set_abs_params(idev, ABS_Y, MIN_Y, MAX_Y, 0, 0);
 
     retval = input_register_device(idev);
     if (retval) {
