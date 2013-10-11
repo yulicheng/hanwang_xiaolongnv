@@ -70,7 +70,7 @@ static void hwln_irq(struct urb *urb)
         case -ECONNRESET:
         case -ENOENT:
         case -ESHUTDOWN:
-            dev_err(&dev->udev->dev, "urb shutdown\n");
+            dev_info(&dev->udev->dev, "urb shutdown\n");
             return;
         default:
             dev_err(&dev->udev->dev, "nonzero urb status: %d\n", urb->status);
