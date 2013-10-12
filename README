@@ -1,0 +1,90 @@
+Linux driver for Hanwang xiaolongnv (HWpen-LN0302) handwriting pad.
+(汉王有线小龙女手写板)
+
+
+== Compile and install the driver ==
+Prerequest: gcc, make etc. to compile the kernel module.
+For ubuntu users to get all required tools:
+sudo apt-get install build-essential
+
+Compile:
+make
+
+Note: the Makefile assumes ubuntu, and the kernel headers usually installed at
+/usr/src/linux-headers-`uname -r`. If you have different kernel src tree, set
+in environment variable KERNELDIR:
+KERNELDIR=/path/to/kernel make
+
+Note: you may have to recompile the driver after every kernel update.
+
+
+To use compiled driver, you probably have to remove the hanwang moudle that
+does not handle xiaolongnv correctly:
+sudo modprobe -r hanwang
+sudo insmod hwln.ko
+
+To unload the driver:
+sudo rmmod hwln
+
+
+== Load the driver at boot time ==
+1. Prevent the hanwang module to load, edit /etc/modprobe.d/blacklist.conf,
+add the following line at the end of file:
+blacklist hanwang
+
+2. Make modprobe work with hwln.ko. Copy hwln.ko to modprobe modules directory,
+and run depmod to update modprobe:
+sudo cp hwln.ko /lib/modules/`uname -r`
+sudo depmod
+
+3. Enable auto load at boot, add 'hwln' to the end of /etc/modules.
+
+
+== Extend to other devices ==
+This driver is for HWpen-LN0302. If you have slightly differnt handwriting pad,
+you may try modify the source code (recompile and reload module after each step
+to see if it works):
+1. Change PRODUCT_ID to your device's PID, which can be found with lsusb cmd:
+Bus 002 Device 005: ID 0b57:8021 Hanwang tablet
+here the 8021 is the PID of your tablet.
+
+2. If the pad not working correctly after update the PRODUCT_ID, try inspect
+mode. Uncomment '#define INSPECT_MODE' and recompile. The driver now prints
+all usb endpoints of the deivce and its raw interrupt inputs to kernel log.
+Use dmesg to inspect kernel log, or continually watch it:
+tail -f /var/log/kern.log
+
+2.1 USB endpoints shows all possible communication channels with the device,
+like:
+[0] IN int BufSize:8 Addr:129 Interval:10
+First three fields are endpoint id, direction, and type(interrupt bulk and etc.)
+The driver tests endpoint id=0 to be an input interrupt source, if not the
+driver will refuse to load. If the endpoint is not correct, change
+check_endpoint function.
+
+2.2 Inspect raw inputs. When move pen on the tablet, the raw data will be print
+out in kernel log.
+2.2.1 Find the value interval of your pad. Each pad may has different axis
+interval accross the plane. Put pen in the left top and right bottom to get
+the readings and update macro MIN_X, MIN_Y, MAX_X, MAX_Y accordingly.
+
+2.2.2 Change hwln_packet function to new data logic if necessary. 
+For LN0302, only first 5 bytes (of 8) are used. The 2 LSB of byte 0 indicates
+if the pen is pressed on the pad (as mouse left button) or the button on the
+pen is pressed (as mouse right button). Byte 1-2 is x reading and byte 3-4 is
+y reading, in little-endian.
+
+
+== Handwriting recognition/input tools ==
+With the driver, the pad can be used as an absolute coordinate pointing device.
+To enable handwriting recognition, additional IME is required.
+
+Online IME:
+Google input tools Chrome extension: http://www.google.com/inputtools/
+百度老年搜索: http://laonian.baidu.com
+Baidu(after enable handwriting input in settings): http://www.baidu.com
+
+Native IME (ibus):
+ibus-tegaki: http://tegaki.org/
+ibus-handwrite: https://code.google.com/p/ibus-handwrite/
+
