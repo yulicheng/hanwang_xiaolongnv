@@ -8,22 +8,25 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
-//#define VENDOR_ID 0x0951
-//#define PRODUCT_ID 0x1624
-//mouse
-//#define VENDOR_ID 0x0461
-//#define PRODUCT_ID 0x4d03
-//mouse
+/*
+ * uncomment next line to inspect raw inputs from pad,
+ * instead of creating a input device
+ *
+ */
+#define INSPECT_MODE
+
 #define VENDOR_ID 0x0b57
+/* change PRODUCT_ID, get by lsusb */
 #define PRODUCT_ID 0x8021
 
+/* the topleft (MIN) and rightbottom (MAX) values of pad, get in inspect mode */
 #define MIN_X 0x0500
 #define MIN_Y 0x0800
 #define MAX_X 0x2400
 #define MAX_Y 0x2400
 
 struct hwln_dev {
-    //for usb dev
+    /* for usb dev */
     struct usb_device *udev;
     struct usb_interface *intf;
     unsigned char *buf;
@@ -31,23 +34,30 @@ struct hwln_dev {
     size_t buf_size;
     struct urb *irq;
 
-    //for input dev
+#ifndef INSPECT_MODE
+    /* for input dev */
     struct input_dev *idev;
     char name[128];
     char phys[64];
+#endif
 };
 
 static void hwln_packet(struct hwln_dev *dev)
 {
-    //int i;
+#ifdef INSPECT_MODE
+    int i;
+#else
     int x;
     int y;
+#endif
 
-    /*printk("recv hwln data=");
+#ifdef INSPECT_MODE
+    printk("recv hwln data=");
     for (i = 0; i < dev->buf_size; i++) {
         printk(" %x", dev->buf[i]);
     }
-    printk("\n");*/
+    printk("\n");
+#else
 
     x = dev->buf[2] * 256u + dev->buf[1];
     y = dev->buf[4] * 256u + dev->buf[3];
@@ -59,6 +69,7 @@ static void hwln_packet(struct hwln_dev *dev)
     input_report_abs(dev->idev, ABS_Y, y);
 
     input_sync(dev->idev);
+#endif
 }
 
 static void hwln_irq(struct urb *urb)
@@ -84,6 +95,7 @@ static void hwln_irq(struct urb *urb)
         pr_err("usb_submit_urb failed in irq\n");
 }
 
+#ifndef INSPECT_MODE
 static int hwln_open(struct input_dev *idev)
 {
     int retval;
@@ -91,7 +103,7 @@ static int hwln_open(struct input_dev *idev)
 
     printk("hwln_open\n");
 
-    //enable urb
+    /* enable urb */
     dev = input_get_drvdata(idev);
     retval = usb_submit_urb(dev->irq, GFP_KERNEL);
     if (retval) {
@@ -111,9 +123,10 @@ static void hwln_close(struct input_dev *idev)
     dev = input_get_drvdata(idev);
     usb_kill_urb(dev->irq);
 }
+#endif
 
-
-//list all endpoints
+#ifdef INSPECT_MODE
+/* list all endpoints */
 static void detect_endpoints(struct usb_interface *intf)
 {
     struct usb_host_interface *iface_desc;
@@ -153,13 +166,14 @@ static void detect_endpoints(struct usb_interface *intf)
                 (in ? "IN" : "OUT"), type_str, buffer_size, addr, interval);
     }
 }
+#endif
 
 static struct usb_endpoint_descriptor *check_endpoint(
         struct usb_host_interface *iface_desc)
 {
     struct usb_endpoint_descriptor *endpoint;
 
-    //check endpoint type to be DIR_IN and TYPE_INT
+    /* check endpoint type to be DIR_IN and TYPE_INT */
     if (iface_desc->desc.bNumEndpoints < 1) {
         return NULL;
     }
@@ -186,7 +200,7 @@ static int setup_usb(struct hwln_dev *dev)
     }
     dev->buf_size = endpoint->wMaxPacketSize;
 
-    //alloc dma buffer for int input
+    /* alloc dma buffer for int input */
     dev->buf = usb_alloc_coherent(dev->udev, dev->buf_size, GFP_KERNEL,
             &dev->buf_dma);
     if (!dev->buf) {
@@ -195,7 +209,7 @@ static int setup_usb(struct hwln_dev *dev)
         goto error;
     }
 
-    //alloc urb
+    /* alloc urb */
     dev->irq = usb_alloc_urb(0, GFP_KERNEL);
     if (!dev->irq) {
         pr_err("alloc for urb failed\n");
@@ -218,14 +232,15 @@ error:
     return retval;
 }
 
-//call after setup_usb
+#ifndef INSPECT_MODE
+/* call after setup_usb */
 static int setup_input(struct hwln_dev *dev)
 {
     int retval = 0;
     struct usb_device *udev = dev->udev;
     struct input_dev *idev;
 
-    //alloc input dev
+    /* alloc input dev */
     idev = input_allocate_device();
     if (!idev) {
         retval = -ENOMEM;
@@ -233,7 +248,7 @@ static int setup_input(struct hwln_dev *dev)
     }
     dev->idev = idev;
 
-    //setup name
+    /* setup name */
     if (udev->manufacturer)
         strlcpy(dev->name, udev->manufacturer, sizeof (dev->name));
     if (udev->product) {
@@ -274,6 +289,7 @@ err_idev:
 error:
     return retval;
 }
+#endif
 
 static int hwln_probe(struct usb_interface *intf,
         const struct usb_device_id *id)
@@ -282,9 +298,11 @@ static int hwln_probe(struct usb_interface *intf,
     struct hwln_dev *dev;
 
     printk("hwln_probe\n");
+#ifdef INSPECT_MODE
     detect_endpoints(intf);
+#endif
 
-    //alloc struct dev
+    /* alloc struct dev */
     dev = kzalloc(sizeof (struct hwln_dev), GFP_KERNEL);
     if (dev == NULL) {
         pr_err("alloc for dev failed\n");
@@ -299,9 +317,13 @@ static int hwln_probe(struct usb_interface *intf,
         goto err_getdev;
     }
 
+#ifndef INSPECT_MODE
     retval = setup_input(dev);
+#else
+    retval = usb_submit_urb(dev->irq, GFP_KERNEL);
+#endif
     if (retval) {
-        //teardown usb
+        /* teardown usb */
         usb_set_intfdata(intf, NULL);
         usb_free_urb(dev->irq);
         usb_free_coherent(dev->udev, dev->buf_size, dev->buf, dev->buf_dma);
@@ -326,16 +348,18 @@ static void hwln_disconnect(struct usb_interface *intf)
     dev = usb_get_intfdata(intf);
     usb_kill_urb(dev->irq);
 
-    //teardown input
+#ifndef INSPECT_MODE
+    /* teardown input */
     input_unregister_device(dev->idev);
     input_free_device(dev->idev);
+#endif
 
-    //teardown usb
+    /* teardown usb */
     usb_set_intfdata(intf, NULL);
     usb_free_urb(dev->irq);
     usb_free_coherent(dev->udev, dev->buf_size, dev->buf, dev->buf_dma);
 
-    //free dev
+    /* free dev */
     usb_put_dev(dev->udev);
     kfree(dev);
 }
