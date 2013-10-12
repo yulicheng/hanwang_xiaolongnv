@@ -37,7 +37,7 @@
  * instead of creating a input device
  *
  */
-#define INSPECT_MODE
+//#define INSPECT_MODE
 
 #define VENDOR_ID 0x0b57
 /* change PRODUCT_ID, get by lsusb */
